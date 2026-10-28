@@ -347,12 +347,12 @@
       navigator.geolocation.getCurrentPosition(async (pos) => {
         const dist = getDistanceFromLatLonInM(pos.coords.latitude, pos.coords.longitude, scannedPayload.lat, scannedPayload.lng);
         
-      //  if (dist > scannedPayload.rad) {
-       //   showAlert("trainee-alert", `عذراً! أنت خارج نطاق القاعة (${Math.round(dist)} متر).`, "bg-rose-50 text-rose-700");
-         // btn.disabled = false;
-          //btn.innerText = "تأكيد الحضور الآن";
-          //return;
-        //}
+        if (dist > scannedPayload.rad) {
+          showAlert("trainee-alert", `عذراً! أنت خارج نطاق القاعة (${Math.round(dist)} متر).`, "bg-rose-50 text-rose-700");
+          btn.disabled = false;
+          btn.innerText = "تأكيد الحضور الآن";
+          return;
+        }
         
 
         const record = {
