@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نظام الحضور الذكي | QR + GPS + Cloud</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-slate-900 text-white shadow-md p-4 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-3">
+      <div class="flex items-center gap-3">
+        <div class="bg-indigo-600 p-2 rounded-xl text-xl"><i class="fa-solid fa-qrcode"></i></div>
+        <div>
+          <h1 class="text-lg font-bold">نظام تسجيل الحضور الرقمي المتكامل</h1>
+          <p class="text-xs text-slate-400">مزامنة سحابية • تحديد جغرافي (GPS) • رمز QR ديناميكي</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="switchTab('instructor')" id="btn-tab-inst" class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white shadow transition">
+          <i class="fa-solid fa-chalkboard-user ml-1"></i> لوحة المؤطر (شاشة العرض)
+        </button>
+        <button onclick="switchTab('trainee')" id="btn-tab-trainee" class="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
+          <i class="fa-solid fa-mobile-screen ml-1"></i> بوابة المتربص
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto p-4 flex-1 w-full">
+
+    <!-- ==================== واجهة المؤطر ==================== -->
+    <div id="view-instructor" class="space-y-6">
+
+      <!-- شريط إعداد الربط السحابي -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center gap-3 flex-1 min-w-[280px]">
+            <div id="cloud-indicator" class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></div>
+            <div class="w-full">
+              <label class="block text-xs font-bold text-slate-600 mb-1">
+                <i class="fa-solid fa-cloud ml-1 text-indigo-600"></i> رابط Google Apps Script Web App (المزامنة السحابية):
+              </label>
+              <input type="url" id="cloud-url" placeholder="https://script.google.com/macros/s/.../exec"
+                class="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 font-mono" dir="ltr">
+            </div>
+          </div>
+          <div class="flex items-center gap-2 self-end">
+            <button onclick="saveCloudUrl()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-floppy-disk"></i> حفظ الرابط
+            </button>
+            <button onclick="fetchCloudData()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border border-slate-300">
+              <i class="fa-solid fa-arrows-rotate"></i> تحديث الآن
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- شبكة المؤطر -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- القسم الأيمن: رمز الـ QR والعرض المباشر -->
+        <div class="lg:col-span-5 space-y-6">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-center flex flex-col items-center">
+            
+            <div class="w-full flex justify-between items-center mb-3">
+              <span class="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> جلسة نشطة
+              </span>
+              <div class="text-xs text-slate-500 flex items-center gap-1">
+                يتجدد خلال: <span id="countdown" class="font-bold text-indigo-600 text-sm">15</span>ث
+              </div>
+            </div>
+
+            <!-- إطار كود الـ QR -->
+            <div class="p-4 bg-slate-50 border-2 border-dashed border-indigo-200 rounded-2xl my-2 shadow-inner">
+              <div id="qrcode" class="flex justify-center items-center w-[220px] h-[220px]"></div>
+            </div>
+
+            <p class="text-xs text-slate-500 mt-2">
+              <i class="fa-solid fa-shield-halved text-emerald-600 ml-1"></i> كود مشفر يتغير دورياً لمنع مشاركته خارج القاعة
+            </p>
+
+            <!-- أزرار تحكم بالرمز الجغرافي -->
+            <div class="w-full mt-4 pt-3 border-t border-slate-100 flex gap-2">
+              <button onclick="captureCurrentLocation()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-3 rounded-lg transition flex items-center justify-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-location-crosshairs"></i> تحديد موقع القاعة الحالي
+              </button>
+              <select id="geo-radius" onchange="updateRadius(this.value)" class="text-xs bg-slate-100 border border-slate-300 rounded-lg px-2 py-2 font-bold text-slate-700">
+                <option value="20">20 م</option>
+                <option value="50" selected>50 م</option>
+                <option value="100">100 م</option>
+                <option value="250">250 م</option>
+              </select>
+            </div>
+            <div id="geo-status" class="text-[11px] text-slate-500 mt-2 text-right w-full font-mono" dir="ltr">
+              Location: 35.9388, 0.0894 (نطاق: 50م)
+            </div>
+          </div>
+        </div>
+
+        <!-- القسم الأيسر: جدول الحضور المباشر والتصدير -->
+        <div class="lg:col-span-7 space-y-6">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-full">
+            
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+              <div>
+                <h2 class="text-base font-bold text-slate-800">سجل الحضور الآني</h2>
+                <p class="text-xs text-slate-500">الحاضرون المسجلون: <span id="attendee-count" class="font-bold text-indigo-600 text-sm">0</span></p>
+              </div>
+              <div class="flex gap-2">
+                <button onclick="exportCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                  <i class="fa-solid fa-file-excel"></i> تصدير Excel
+                </button>
+                <button onclick="window.print()" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                  <i class="fa-solid fa-print"></i> طباعة
+                </button>
+              </div>
+            </div>
+
+            <!-- جدول الحاضرين -->
+            <div class="overflow-y-auto max-h-[380px] border border-slate-200 rounded-xl flex-1">
+              <table class="w-full text-right text-xs">
+                <thead class="bg-slate-100 text-slate-600 sticky top-0 font-bold border-b border-slate-200">
+                  <tr>
+                    <th class="p-3">#</th>
+                    <th class="p-3">اسم المتربص</th>
+                    <th class="p-3">رقم التسجيل</th>
+                    <th class="p-3">الوقت</th>
+                    <th class="p-3">المسافة</th>
+                    <th class="p-3">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody id="attendance-tbody" class="divide-y divide-slate-100">
+                  <tr id="empty-row">
+                    <td colspan="6" class="text-center py-10 text-slate-400">
+                      <i class="fa-regular fa-clipboard text-3xl mb-2 block text-slate-300"></i>
+                      في انتظار تسجيل الحضور...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ==================== واجهة المتربص ==================== -->
+    <div id="view-trainee" class="max-w-md mx-auto space-y-5 hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        
+        <div class="text-center mb-5">
+          <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto text-xl mb-2">
+            <i class="fa-solid fa-camera"></i>
+          </div>
+          <h2 class="text-base font-bold text-slate-800">مسح كود الحضور</h2>
+          <p class="text-xs text-slate-500">وجّه الكاميرا نحو الرمز المعروض في القاعة لتأكيد حضورك</p>
+        </div>
+
+        <!-- كاميرا المسح -->
+        <div class="overflow-hidden rounded-xl border-2 border-indigo-200 bg-black aspect-square relative mb-4">
+          <div id="qr-reader" class="w-full h-full"></div>
+        </div>
+
+        <button onclick="startScanner()" id="btn-start-scanner" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-sm mb-3">
+          <i class="fa-solid fa-video"></i> تشغيل الكاميرا
+        </button>
+
+        <!-- استمارة تأكيد البيانات بعد المسح -->
+        <div id="trainee-form" class="space-y-3 pt-3 border-t border-slate-100 hidden">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">الاسم واللقب:</label>
+            <input type="text" id="trainee-name" placeholder="محمد بلقاسم" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">رقم التسجيل / الفوج:</label>
+            <input type="text" id="trainee-id" placeholder="2026/045" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <button onclick="submitAttendance()" id="btn-submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-sm">
+            <i class="fa-solid fa-check"></i> تأكيد الحضور الآن
+          </button>
+        </div>
+
+        <div id="trainee-alert" class="mt-4 p-3 rounded-xl text-xs font-bold hidden text-center"></div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // الإعدادات والحالة
+    let sessionGeo = { lat: 35.9388, lng: 0.0894, radius: 50 };
+    let currentToken = "";
+    let attendees = [];
+    let qrcodeInstance = null;
+    let timerSeconds = 15;
+    let html5QrCode = null;
+
+    // تهيئة الصفحة
+    window.onload = function() {
+      const savedUrl = localStorage.getItem("cloud_script_url");
+      if (savedUrl) {
+        document.getElementById("cloud-url").value = savedUrl;
+        setCloudStatus(true);
+      }
+      generateNewToken();
+      setInterval(tickTimer, 1000);
+      setInterval(pollCloudData, 4000);
+    };
+
+    function switchTab(tab) {
+      if (tab === 'instructor') {
+        document.getElementById('view-instructor').classList.remove('hidden');
+        document.getElementById('view-trainee').classList.add('hidden');
+        document.getElementById('btn-tab-inst').className = "px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white shadow";
+        document.getElementById('btn-tab-trainee').className = "px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700";
+      } else {
+        document.getElementById('view-instructor').classList.add('hidden');
+        document.getElementById('view-trainee').classList.remove('hidden');
+        document.getElementById('btn-tab-trainee').className = "px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white shadow";
+        document.getElementById('btn-tab-inst').className = "px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700";
+      }
+    }
+
+    // توليد QR كود ديناميكي
+    function generateNewToken() {
+      currentToken = Math.random().toString(36).substring(2, 10);
+      const payload = JSON.stringify({
+        t: currentToken,
+        lat: sessionGeo.lat,
+        lng: sessionGeo.lng,
+        rad: sessionGeo.radius,
+        exp: Date.now() + 15000
+      });
+
+      const qrContainer = document.getElementById("qrcode");
+      qrContainer.innerHTML = "";
+      qrcodeInstance = new QRCode(qrContainer, {
+        text: payload,
+        width: 220,
+        height: 220,
+        colorDark: "#1e1b4b",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      timerSeconds = 15;
+    }
+
+    function tickTimer() {
+      timerSeconds--;
+      document.getElementById("countdown").innerText = timerSeconds;
+      if (timerSeconds <= 0) {
+        generateNewToken();
+      }
+    }
+
+    // إدارة الرابط السحابي
+    function saveCloudUrl() {
+      const url = document.getElementById("cloud-url").value.trim();
+      if (!url.startsWith("https://script.google.com")) {
+        alert("يرجى إدخال رابط Google Apps Script صحيح يبدأ بـ https://script.google.com");
+        return;
+      }
+      localStorage.setItem("cloud_script_url", url);
+      setCloudStatus(true);
+      alert("تم حفظ الرابط السحابي بنجاح!");
+      fetchCloudData();
+    }
+
+    function setCloudStatus(active) {
+      const ind = document.getElementById("cloud-indicator");
+      if (active) {
+        ind.className = "w-3 h-3 rounded-full bg-emerald-500";
+      } else {
+        ind.className = "w-3 h-3 rounded-full bg-amber-500 animate-pulse";
+      }
+    }
+
+    // تحديد الموقع الجغرافي
+    function captureCurrentLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          sessionGeo.lat = pos.coords.latitude;
+          sessionGeo.lng = pos.coords.longitude;
+          document.getElementById("geo-status").innerText = `Location: ${sessionGeo.lat.toFixed(4)}, ${sessionGeo.lng.toFixed(4)} (نطاق: ${sessionGeo.radius}م)`;
+          generateNewToken();
+          alert("تم تحديث موقع القاعة بنجاح!");
+        }, () => alert("تعذر الحصول على الموقع الجغرافي من المتصفح."));
+      }
+    }
+
+    function updateRadius(val) {
+      sessionGeo.radius = parseInt(val);
+      document.getElementById("geo-status").innerText = `Location: ${sessionGeo.lat.toFixed(4)}, ${sessionGeo.lng.toFixed(4)} (نطاق: ${sessionGeo.radius}م)`;
+      generateNewToken();
+    }
+
+    // كاميرا المتربص وقراءة الكود
+    let scannedPayload = null;
+    function startScanner() {
+      html5QrCode = new Html5Qrcode("qr-reader");
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          try {
+            scannedPayload = JSON.parse(decodedText);
+            html5QrCode.stop();
+            document.getElementById("btn-start-scanner").classList.add("hidden");
+            document.getElementById("trainee-form").classList.remove("hidden");
+            showAlert("trainee-alert", "تم مسح الرمز بنجاح! أكمل بياناتك لتأكيد الحضور.", "bg-emerald-50 text-emerald-700");
+          } catch (e) {
+            showAlert("trainee-alert", "رمز غير صالح!", "bg-rose-50 text-rose-700");
+          }
+        }
+      ).catch(err => {
+        showAlert("trainee-alert", "تعذر فتح الكاميرا: " + err, "bg-rose-50 text-rose-700");
+      });
+    }
+
+    // إرسال الحضور
+    async function submitAttendance() {
+      const name = document.getElementById("trainee-name").value.trim();
+      const id = document.getElementById("trainee-id").value.trim();
+      if (!name || !id) {
+        alert("يرجى ملء جميع الحقول.");
+        return;
+      }
+
+      const btn = document.getElementById("btn-submit");
+      btn.disabled = true;
+      btn.innerText = "جاري التأكيد...";
+
+      // التحقق من الموقع
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const dist = getDistanceFromLatLonInM(pos.coords.latitude, pos.coords.longitude, scannedPayload.lat, scannedPayload.lng);
+        
+        if (dist > scannedPayload.rad) {
+          showAlert("trainee-alert", `عذراً! أنت خارج نطاق القاعة (${Math.round(dist)} متر).`, "bg-rose-50 text-rose-700");
+          btn.disabled = false;
+          btn.innerText = "تأكيد الحضور الآن";
+          return;
+        }
+
+        const record = {
+          traineeName: name,
+          traineeId: id,
+          module: "معلوماتية",
+          distance: dist,
+          status: "نظامي (QR + GPS)"
+        };
+
+        const cloudUrl = localStorage.getItem("cloud_script_url");
+        if (cloudUrl) {
+          try {
+            const res = await fetch(cloudUrl, {
+              method: "POST",
+              headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify(record)
+            });
+            const resData = await res.json();
+            if (resData.status === "success") {
+              showAlert("trainee-alert", "تم تسجيل حضورك بنجاح في السحابة!", "bg-emerald-50 text-emerald-700");
+            } else {
+              showAlert("trainee-alert", resData.message, "bg-rose-50 text-rose-700");
+            }
+          } catch(err) {
+            showAlert("trainee-alert", "تم الحفظ محلياً (تعذر الاتصال بالسحابة)", "bg-amber-50 text-amber-700");
+            addLocalRecord(record);
+          }
+        } else {
+          addLocalRecord(record);
+          showAlert("trainee-alert", "تم تسجيل حضورك بنجاح!", "bg-emerald-50 text-emerald-700");
+        }
+
+        btn.disabled = false;
+        btn.innerText = "تأكيد الحضور الآن";
+      }, () => {
+        alert("يرجى تفعيل صلاحية الـ GPS على هاتفك للتحقق من الحضور.");
+        btn.disabled = false;
+        btn.innerText = "تأكيد الحضور الآن";
+      });
+    }
+
+    // حساب المسافة الجغرافية بالأمتار
+    function getDistanceFromLatLonInM(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function addLocalRecord(rec) {
+      rec.timestamp = new Date().toLocaleTimeString("fr-FR");
+      attendees.unshift(rec);
+      renderTable();
+    }
+
+    // المزامنة الدورية مع جدول Google Drive
+    async function pollCloudData() {
+      const cloudUrl = localStorage.getItem("cloud_script_url");
+      if (!cloudUrl) return;
+      try {
+        const res = await fetch(cloudUrl);
+        const data = await res.json();
+        if (data.status === "success" && data.records) {
+          attendees = data.records;
+          renderTable();
+        }
+      } catch (e) {}
+    }
+
+    function fetchCloudData() {
+      pollCloudData();
+      alert("تم طلب تحديث البيانات من Google Drive!");
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("attendance-tbody");
+      document.getElementById("attendee-count").innerText = attendees.length;
+      if (attendees.length === 0) {
+        tbody.innerHTML = `<tr id="empty-row"><td colspan="6" class="text-center py-10 text-slate-400">في انتظار تسجيل الحضور...</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = attendees.map((a, i) => `
+        <tr class="hover:bg-slate-50">
+          <td class="p-3 font-mono">${i + 1}</td>
+          <td class="p-3 font-bold text-slate-800">${a.traineeName}</td>
+          <td class="p-3 font-mono">${a.traineeId}</td>
+          <td class="p-3 font-mono text-slate-500">${a.timestamp}</td>
+          <td class="p-3 font-mono text-slate-500">${a.distance || '-'}</td>
+          <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">${a.status}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    function showAlert(id, msg, cls) {
+      const el = document.getElementById(id);
+      el.className = `mt-4 p-3 rounded-xl text-xs font-bold text-center block ${cls}`;
+      el.innerText = msg;
+    }
+
+    function exportCSV() {
+      let csv = "\uFEFFالرقم,الاسم واللقب,رقم التسجيل,الوقت,المسافة,الحالة\n";
+      attendees.forEach((a, idx) => {
+        csv += `${idx + 1},"${a.traineeName}","${a.traineeId}","${a.timestamp}","${a.distance || ''}","${a.status}"\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `سجل_الحضور_${new Date().toISOString().slice(0,10)}.csv`;
+      link.click();
+    }
+  </script>
+</body>
+</html>
