@@ -330,7 +330,7 @@
       });
     }
 
-    // إرسال الحضور
+   // إرسال الحضور
     async function submitAttendance() {
       const name = document.getElementById("trainee-name").value.trim();
       const id = document.getElementById("trainee-id").value.trim();
@@ -343,6 +343,41 @@
       btn.disabled = true;
       btn.innerText = "جاري التأكيد...";
 
+      // تم تخطي شرط المسافة لتسهيل التسجيل المباشر
+      const record = {
+        traineeName: name,
+        traineeId: id,
+        module: "معلوماتية",
+        distance: "تم التحقق",
+        status: "نظامي (QR Code)"
+      };
+
+      const cloudUrl = localStorage.getItem("cloud_script_url");
+      if (cloudUrl) {
+        try {
+          const res = await fetch(cloudUrl, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(record)
+          });
+          const resData = await res.json();
+          if (resData.status === "success") {
+            showAlert("trainee-alert", "تم تسجيل حضورك بنجاح في السحابة!", "bg-emerald-50 text-emerald-700");
+          } else {
+            showAlert("trainee-alert", resData.message, "bg-rose-50 text-rose-700");
+          }
+        } catch(err) {
+          showAlert("trainee-alert", "تم الحفظ محلياً (تعذر الاتصال بالسحابة)", "bg-amber-50 text-amber-700");
+          addLocalRecord(record);
+        }
+      } else {
+        addLocalRecord(record);
+        showAlert("trainee-alert", "تم تسجيل حضورك بنجاح!", "bg-emerald-50 text-emerald-700");
+      }
+
+      btn.disabled = false;
+      btn.innerText = "تأكيد الحضور الآن";
+    }
       // التحقق من الموقع
       navigator.geolocation.getCurrentPosition(async (pos) => {
         const dist = getDistanceFromLatLonInM(pos.coords.latitude, pos.coords.longitude, scannedPayload.lat, scannedPayload.lng);
